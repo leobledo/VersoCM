@@ -87,18 +87,6 @@ CSInterface.prototype.getExtensionID = function () {
 CSInterface.prototype.getScaleFactor = function () {
   return window.__adobe_cep__ ? window.__adobe_cep__.getScaleFactor() : 1;
 };
-/**
- * Tell CEP which key events this panel wants for itself. Any key listed here is
- * delivered to the panel and NOT forwarded to the host app — this is the only way
- * to stop After Effects from eating Space (project preview) while the panel is
- * focused. `keyEventsInterest` is a JSON array of {keyCode, ctrlKey, altKey,
- * shiftKey, metaKey}. macOS only; on Windows __adobe_cep__ has no such method.
- */
-CSInterface.prototype.registerKeyEventsInterest = function (keyEventsInterest) {
-  if (!window.__adobe_cep__ || !window.__adobe_cep__.registerKeyEventsInterest) return false;
-  return window.__adobe_cep__.registerKeyEventsInterest(keyEventsInterest);
-};
-
 CSInterface.prototype.setWindowTitle = function (title) {
   if (window.__adobe_cep__) window.__adobe_cep__.invokeSyncCommand
     ? window.__adobe_cep__.invokeSyncCommand(0, title) : null;

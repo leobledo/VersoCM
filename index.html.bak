@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' file: https:; media-src blob: file: *; img-src 'self' file: data:;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' file: https://lrclib.net https:; media-src blob: file: *; img-src 'self' file: data:;">
 <title>Verso CM</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -527,7 +527,24 @@ input[type=file]{display:none}
   </div>
 </div>
 
-
+<!-- AUTO-SYNC MODAL -->
+<div class="ov" id="asov">
+  <div class="modal" style="width:440px">
+    <h3 style="display:flex;align-items:center;gap:7px">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--bl)" stroke-width="2"><path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9"/></svg>
+      Smart Sync
+    </h3>
+    <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:10px;margin-top:10px">
+      <div style="display:flex;gap:7px">
+        <div style="flex:1"><label style="font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:3px">Title <span style="color:var(--bl)">*</span></label><input class="minput" id="as-title" type="text" placeholder="e.g. Glimpse of Us" onkeydown="if(event.key==='Enter')doAutoSync()"></div>
+        <div style="flex:1"><label style="font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:3px">Artist <span style="opacity:.5">(optional)</span></label><input class="minput" id="as-artist" type="text" placeholder="e.g. Joji" onkeydown="if(event.key==='Enter')doAutoSync()"></div>
+      </div>
+    </div>
+    <div id="as-results" style="display:none;margin-bottom:7px"></div>
+    <div id="as-status" style="font-size:11px;color:var(--tx3);min-height:14px;margin-bottom:7px"></div>
+    <div class="mact"><button class="mbtn" onclick="closeAutoSync()">Cancel</button><button class="mbtn ok" id="as-searchbtn" onclick="doAutoSync()"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Search</button></div>
+  </div>
+</div>
 
 <div class="rate-menu" id="rateMenu"></div>
 <div class="rate-menu" id="importMenu"></div>
@@ -547,37 +564,6 @@ input[type=file]{display:none}
 var csInterface = null;
 if (window.__adobe_cep__ && typeof CSInterface !== 'undefined') {
   try { csInterface = new CSInterface(); } catch(e){ csInterface = null; }
-}
-// Claim the shortcuts we use so the HOST (After Effects) never sees them. Without
-// this, Space reaches AE and starts the *project* preview instead of the panel's
-// audio. Keycodes are Mac virtual keycodes (Space 49, Return 36, Backspace 51,
-// Fwd-Delete 117, Z 6) — registerKeyEventsInterest is a macOS-only CEP API.
-// PANEL INDEPENDIENTE: mientras el panel tiene el foco, las teclas son SUYAS y no
-// deben llegar a After Effects (Space = preview del proyecto, Cmd+Z = undo global...).
-// Keycodes VIRTUALES DE MAC (no los de JS: Space es 49, no 32). macOS only.
-if (csInterface) {
-  try {
-    var MAC_LETTERS = [0,11,8,2,14,3,5,4,34,38,40,37,46,45,31,35,12,15,1,17,32,9,13,7,16,6];   // a..z
-    var MAC_DIGITS  = [29,18,19,20,21,23,22,26,28,25];                                          // 0..9
-    var MAC_EDIT    = [49,36,48,51,117,53,123,124,125,126];   // space enter tab del fwddel esc ←→↓↑
-    var MAC_FN      = [122,120,99,118,96,97,98,100,101,109,103,111];                             // F1..F12
-    var interest = [];
-    // Teclas sueltas y con Shift: siempre del panel.
-    MAC_LETTERS.concat(MAC_DIGITS, MAC_EDIT, MAC_FN).forEach(function(k){
-      interest.push({ keyCode: k });
-      interest.push({ keyCode: k, shiftKey: true });
-    });
-    // Atajos propios del panel con Ctrl/Cmd. NO reclamamos Cmd+S / Cmd+Q / Cmd+W:
-    // esos deben seguir llegando a AE (guardar, salir, cerrar) — si los tragamos,
-    // guardar el proyecto con el panel enfocado dejaria de funcionar.
-    [6 /*Z*/].forEach(function(k){
-      [{ctrlKey:true},{metaKey:true},{ctrlKey:true,shiftKey:true},{metaKey:true,shiftKey:true}].forEach(function(m){
-        var o={ keyCode:k }; for(var p in m) o[p]=m[p]; interest.push(o);
-      });
-    });
-    var _kOk = csInterface.registerKeyEventsInterest(JSON.stringify(interest));
-    if (_kOk === false) console.warn('[SRT] registerKeyEventsInterest no disponible: AE seguira robando las teclas.');
-  } catch(e){ console.warn('[SRT] registerKeyEventsInterest fallo:', e); }
 }
 var IN_AE = !!csInterface;   // single source of truth for "running inside After Effects"
 // Touch device = iPad / iPhone (web on a touch screen). AE/desktop-web use the mouse.
@@ -754,7 +740,7 @@ lyrStage.addEventListener('wheel', function(e){ e.preventDefault(); lyrBrowseUnt
 lyrStage.addEventListener('touchstart', function(e){ if(e.touches.length!==1) return; lyrBrowseUntil=Date.now()+5000; if(lyrEaseId){ cancelAnimationFrame(lyrEaseId); lyrEaseId=null; } lyrVel=0; _lyrTouchVelY=0; lyrDrag=true; lyrMoved=false; lyrDragStartY=e.touches[0].clientY; _lyrTouchLastY=e.touches[0].clientY; _lyrTouchLastT=Date.now(); var fl=document.getElementById('lyrFlow'); lyrBaseY=getTY(fl); fl.classList.add('nodrift'); },{passive:true});
 lyrStage.addEventListener('touchend', function(){ if(IS_TOUCH && selStampSet.size && !lyrMoved){ selStampSet.clear(); syncTouchButtons(); tlRefresh(); } },{passive:true});
 
-['eov'].forEach(function(id){ document.getElementById(id).addEventListener('click', function(e){ if(e.target===e.currentTarget) e.target.classList.remove('open'); }); });
+['eov','asov'].forEach(function(id){ document.getElementById(id).addEventListener('click', function(e){ if(e.target===e.currentTarget) e.target.classList.remove('open'); }); });
 // ─── CHANNELS (fixed list; each maps to its Lyrics + TH comp by exact name) ───
 // The list is always shown (never depends on reading the project). Only the
 // actions (Import / Thumbnail / audio) reach into AE, targeting these comps by name.
@@ -1493,7 +1479,7 @@ function seekToLine(i){
 function getTY(el){ var m=/translateY\((-?[\d.]+)px\)/.exec(el.style.transform||''); return m?parseFloat(m[1]):0; }
 function clampLyr(y){ var stage=document.getElementById('lyrStage'), fl=document.getElementById('lyrFlow'); var min=-(fl.offsetHeight - stage.clientHeight*0.4), max=stage.clientHeight*0.4; return Math.max(min,Math.min(max,y)); }
 function startLyrEase(){ if(lyrEaseId) return; var fl=document.getElementById('lyrFlow'); (function step(){ var cur=clampLyr(getTY(fl)+lyrVel); fl.style.transform='translateY('+cur+'px)'; lyrManualY=cur; lyrVel*=0.8; if(Math.abs(lyrVel)>0.15){ lyrEaseId=requestAnimationFrame(step); } else { lyrVel=0; lyrEaseId=null; } })(); }
-function isSection(line){ var s=(line||'').trim(); if(!s) return false; if(/^\[[\s\S]*\]$/.test(s)) return true; if(/^\(\s*(?:pre-?chorus|post-?chorus|intro|verse|chorus|bridge|outro|hook|refrain|interlude|breakdown|instrumental|solo)(?:\s*\d+)?(?:\s*[:\-]\s*[^)]{0,30})?\s*\)$/i.test(s)) return true; if(/^(intro|verse|chorus|pre-?chorus|post-?chorus|bridge|outro|hook|refrain|interlude|breakdown|instrumental|solo)(\s*\d+)?\s*:?$/i.test(s)) return true; return false; }
+function isSection(line){ var s=(line||'').trim(); if(!s) return false; if(/^\[.*\]$/.test(s)) return true; if(/^\(\s*(?:pre-?chorus|post-?chorus|intro|verse|chorus|bridge|outro|hook|refrain|interlude|breakdown|instrumental|solo)(?:\s*\d+)?(?:\s*[:\-]\s*[^)]{0,30})?\s*\)$/i.test(s)) return true; if(/^(intro|verse|chorus|pre-?chorus|post-?chorus|bridge|outro|hook|refrain|interlude|breakdown|instrumental|solo)(\s*\d+)?\s*:?$/i.test(s)) return true; return false; }
 function nextStampable(from){ for(var i=Math.max(0,from);i<lines.length;i++) if(!isSection(lines[i])) return i; return lines.length; }
 // After deleting markers, continue stamping from AFTER the last remaining marker
 // (so freed-up lines become stampable again and the order isn't broken).
@@ -1506,7 +1492,7 @@ function recomputeCurLine(){
 function isJunkLine(s){ return /^you might also like$/i.test(s) || /^\d+\s*embed$/i.test(s) || /^embed$/i.test(s) || /^see .+ live/i.test(s) || /get tickets as low as/i.test(s) || /^\d+\s*contributors?/i.test(s) || /^translations?$/i.test(s); }
 function deriveLines(text){
   var raw=(text||'').split('\n');
-  var out=[];
+  var out=[], skip=false;
   // Skip everything before the first section marker ([Verse], [Chorus], etc.) to strip
   // contributor names and other metadata that Genius places before the actual lyrics.
   var firstSection=-1;
@@ -1515,16 +1501,8 @@ function deriveLines(text){
   for(var i=start;i<raw.length;i++){
     var s=raw[i].trim();
     var idx=s.toLowerCase().indexOf('you might also like');
-    // El promo de Genius se incrusta EN MEDIO de la letra. Antes se descartaba todo lo
-    // que venia detras hasta la siguiente cabecera [..], lo que se comia estrofas enteras.
-    // Ahora se corta solo el promo: lo de antes y lo de despues se conservan.
-    if(idx>=0){
-      var before=s.slice(0,idx).trim();
-      if(before && !isJunkLine(before)) out.push(before);
-      var after=s.slice(idx+'you might also like'.length).trim();
-      if(after && !isJunkLine(after)) out.push(after);
-      continue;
-    }
+    if(idx>=0){ var before=s.slice(0,idx).trim(); if(before && !isJunkLine(before)) out.push(before); skip=true; continue; }
+    if(skip){ if(isSection(s)){ skip=false; } else continue; }
     if(!s || isJunkLine(s)) continue;
     out.push(s);
   }
@@ -2256,7 +2234,7 @@ function toggleImportMenu(ev){
   var m=document.getElementById('importMenu'), btn=document.getElementById('mainActionBtn');
   if(m.classList.contains('open')){ closeImportMenu(); return; }
   m.innerHTML='';
-  var items=[{label:'Import to Comp',fn:importToChannel}];
+  var items=[{label:'Import to Comp',fn:importToChannel},{label:'Sync',fn:showAutoSync}];
   items.forEach(function(it){ var d=document.createElement('div'); d.className='rate-item'; d.textContent=it.label; d.onclick=function(e){ e.stopPropagation(); closeImportMenu(); it.fn(); }; m.appendChild(d); });
   var br=btn.getBoundingClientRect();
   m.style.left='auto'; m.style.right=(window.innerWidth-br.left+8)+'px'; m.style.top=(br.top+br.height/2)+'px'; m.style.transform='translateY(-50%)';
@@ -2303,6 +2281,66 @@ function clearChannelFull(id){
   } else { toast('Channel cleared'); }
 }
 
+// ─── AUTO-SYNC (LRCLIB) ───
+function showAutoSync(){
+  var ch=getActive(); if(ch){ if(ch.artist) document.getElementById('as-artist').value=ch.artist; if(ch.song) document.getElementById('as-title').value=ch.song; }
+  document.getElementById('as-status').textContent=''; document.getElementById('as-results').style.display='none'; document.getElementById('as-results').innerHTML='';
+  document.getElementById('asov').classList.add('open'); setTimeout(function(){ document.getElementById('as-title').focus(); },80);
+}
+function closeAutoSync(){ document.getElementById('asov').classList.remove('open'); }
+function doAutoSync(){
+  var artist=document.getElementById('as-artist').value.trim(), title=document.getElementById('as-title').value.trim();
+  var _alEl=document.getElementById('as-album'), album=_alEl?_alEl.value.trim():'';
+  if(!title){ setASStatus('Please enter at least the song title.','#c44'); return; }
+  var btn=document.getElementById('as-searchbtn'); btn.disabled=true; btn.textContent='Searching…';
+  setASStatus('Contacting LRCLIB…','var(--bl)'); document.getElementById('as-results').style.display='none';
+  if(artist){
+    var params='artist_name='+encodeURIComponent(artist)+'&track_name='+encodeURIComponent(title); if(album) params+='&album_name='+encodeURIComponent(album);
+    xhrGet('https://lrclib.net/api/get?'+params, function(err,data){
+      if(err){ setASStatus('No exact match — searching…','var(--bl)'); doASSearch(artist,title); return; }
+      btn.disabled=false; resetSearchBtn(btn);
+      if(!data.syncedLyrics){ setASStatus(data.plainLyrics?'Only plain lyrics — searching for synced…':'No lyrics on exact match — searching…','var(--bl)'); doASSearch(artist,title); return; }
+      var parsed=parseLRC(data.syncedLyrics); if(!parsed.length){ setASStatus('Could not parse — searching…','var(--bl)'); doASSearch(artist,title); return; }
+      showASPreview(parsed,data);
+    });
+  } else { doASSearch('',title); }
+}
+function doASSearch(a,t){
+  var q=((a?a+' ':'')+t).trim();
+  xhrGet('https://lrclib.net/api/search?q='+encodeURIComponent(q), function(err,arr){
+    var btn=document.getElementById('as-searchbtn'); btn.disabled=false; resetSearchBtn(btn);
+    if(err||!arr||!arr.length){ setASStatus('No results found for "'+q+'".','#c44'); return; }
+    var sy=arr.filter(function(x){ return !!x.syncedLyrics; });
+    showSearchResults((sy.length?sy:arr).slice(0,8));
+  });
+}
+function xhrGet(url,cb){ var xhr=new XMLHttpRequest(); xhr.open('GET',url,true); xhr.setRequestHeader('Accept','application/json'); xhr.onload=function(){ if(xhr.status===404){ cb('NOT_FOUND',null); return; } if(xhr.status<200||xhr.status>=300){ cb('HTTP '+xhr.status,null); return; } try{ cb(null,JSON.parse(xhr.responseText)); }catch(e){ cb('Parse error',null); } }; xhr.onerror=function(){ cb('Network error — check internet connection',null); }; xhr.send(); }
+function resetSearchBtn(btn){ btn.innerHTML='<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Search'; }
+function showSearchResults(results){
+  setASStatus('Select the correct track:','var(--bl)'); var div=document.getElementById('as-results'); div.style.display='block'; div.innerHTML='';
+  results.forEach(function(r){ var row=document.createElement('div'); row.style.cssText='padding:7px 9px;border-radius:8px;border:1px solid var(--ln);background:var(--p3);margin-bottom:4px;cursor:pointer;transition:border-color .1s'; row.onmouseenter=function(){ this.style.borderColor='var(--bl)'; }; row.onmouseleave=function(){ this.style.borderColor=''; }; var hs=!!r.syncedLyrics; row.innerHTML='<div style="font-size:12px;color:var(--tx);font-weight:600">'+esc(r.trackName)+'</div><div style="font-size:11px;color:var(--tx2);margin-top:1px">'+esc(r.artistName||'')+(r.albumName?' · '+esc(r.albumName):'')+'</div><div style="font-size:10px;color:'+(hs?'var(--bl)':'#888')+';margin-top:2px">'+(hs?'✓ Synced':'Plain only')+'</div>'; (function(data){ row.onclick=function(){ if(data.syncedLyrics){ var p=parseLRC(data.syncedLyrics); if(p.length) showASPreview(p,data); else setASStatus('Could not parse.','#c44'); } else if(data.plainLyrics){ applyPlainLRC(data.plainLyrics); setTimeout(closeAutoSync,1200); } }; })(r); div.appendChild(row); });
+}
+function showASPreview(parsed,data){
+  var div=document.getElementById('as-results'); div.style.display='block'; div.innerHTML='';
+  var info=document.createElement('div'); info.style.cssText='padding:7px 9px;border-radius:8px;border:1px solid rgba(255,46,99,.25);background:rgba(255,46,99,.07);margin-bottom:7px;font-size:11px;color:var(--tx2)'; info.innerHTML='<span style="color:var(--bl);font-weight:700">✓</span> '+esc(data.artistName)+' — '+esc(data.trackName)+(data.albumName?' ('+esc(data.albumName)+')':'')+'<br><span style="color:var(--tx3)">'+parsed.length+' synced lines</span>'; div.appendChild(info);
+  var prev=document.createElement('div'); prev.style.cssText='background:var(--p3);border-radius:6px;padding:6px 9px;margin-bottom:7px;font-size:10px;font-family:Consolas,monospace;color:var(--tx2);max-height:80px;overflow:hidden;line-height:1.7'; prev.textContent=parsed.slice(0,5).map(function(l){ return '['+fmtLRC(l.time)+'] '+l.text; }).join('\n')+(parsed.length>5?'\n…':''); div.appendChild(prev);
+  var ab=document.createElement('button'); ab.className='mbtn ok'; ab.style.cssText='width:100%;justify-content:center;padding:7px'; ab.textContent='Apply '+parsed.length+' timestamps'; ab.onclick=function(){ applyLRCStamps(parsed); }; div.appendChild(ab); setASStatus('','');
+}
+function applyLRCStamps(parsed){
+  if(!lines.length) lines=parsed.map(function(l){ return l.text; });
+  pushUndo(); stamps=[];
+  parsed.forEach(function(lrc){ var li=-1; for(var k=0;k<lines.length;k++){ if(lines[k].trim().toLowerCase()===lrc.text.trim().toLowerCase()){ li=k; break; } } if(li===-1) return; stamps.push({id:++stampSeq,lineIdx:li,time:lrc.time}); });
+  if(!stamps.length) parsed.forEach(function(lrc,i){ if(i<lines.length) stamps.push({id:++stampSeq,lineIdx:i,time:lrc.time}); });
+  stamps.sort(function(a,b){ return a.time-b.time; });
+  curLine=nextStampable(0); pendingId=null;
+  var a1=getActive(); if(a1) a1.lyricsText=lines.join('\n');
+  saveWorkingSet(); renderChannels(); renderLyricsFlow(); tlRefresh(); updateLyricHighlight(AEL.currentTime||0); closeAutoSync(); toast('✓ '+stamps.length+' timestamps applied');
+}
+function applyPlainLRC(plain){ lines=deriveLines(plain); stamps=[]; curLine=nextStampable(0); pendingId=null; var a2=getActive(); if(a2) a2.lyricsText=lines.join('\n'); saveWorkingSet(); renderChannels(); renderLyricsFlow(); tlRefresh(); closeAutoSync(); toast('Plain lyrics loaded'); }
+function parseLRC(lrc){ var result=[],re=/\[(\d{1,2}):(\d{2})\.(\d{2,3})\](.*)/; lrc.split('\n').forEach(function(line){ var m=re.exec(line); if(!m) return; var min=parseInt(m[1]),sec=parseInt(m[2]),ms=m[3].length===2?parseInt(m[3])*10:parseInt(m[3]),t=min*60+sec+ms/1000,txt=m[4].trim(); if(txt) result.push({time:t,text:txt}); }); return result; }
+function fmtLRC(s){ var m=Math.floor(s/60),sec=(s%60).toFixed(2); return p2(m)+':'+sec; }
+function setASStatus(msg,color){ var el=document.getElementById('as-status'); el.textContent=msg; el.style.color=color||'var(--tx3)'; }
+
 // ─── GENIUS BULK LYRICS LOADER ───
 // One row per channel (icon + name + editable link). Paste links in cascade to fill
 // them in order; drag a row to move its link; Load fetches + fills each lyrics box.
@@ -2338,102 +2376,61 @@ function geniusDistribute(){
 }
 // Fetch every pasted link → fill each channel's lyrics. Progress shows on the Lyrics
 // button (which reads "Load" while links are present). No separate Load button.
-// Carga en COLA con tope de concurrencia. Antes se disparaban todos los canales a la
-// vez y cada uno abre 9 peticiones (8 proxies + directa): con 20 canales
-// son ~160 peticiones simultaneas que el navegador encola y que hacen que los proxies
-// empiecen a limitar y fallar. De 4 en 4 va mas rapido y falla menos.
-var GENIUS_MAX_PARALELO=4;
 function loadGenius(){
   var lbl=document.getElementById('dpLyrLbl');
-  var jobs=[];
-  channels.forEach(function(ch,i){ var url=(geniusLinks[i]||'').trim(); if(url) jobs.push({ch:ch,url:url}); });
-  var total=jobs.length, done=0, okc=0, next=0, activos=0;
-  if(!total){ gStatus('No links to load','#c66'); return; }
-  // Status EN VIVO: antes el contador solo se movia cuando un canal TERMINABA (hasta 5s
-  // si los proxies tardaban) → se veia congelado en 0/n. Ahora se muestran los canales que
-  // se estan buscando ahora mismo y onProg refresca en cada intento, asi nunca parece muerto.
-  var activeNames=[];
-  function liveStatus(extra,esErr){
-    var m=done+'/'+total+' fetched';
-    var busy=activeNames.length? ' · '+activeNames.join(', ')+'…' : '';
-    if(lbl) lbl.textContent='Loading…';
-    gStatus(m+(extra||busy), esErr?'#c66':'var(--bl)');
-    toast('Lyrics '+m+(extra||busy), 60000);
-  }
-  function finalizar(){
-    if(done<total) return;
-    closeGenius(); renderChannels(); syncTitle();
-    toast(okc? ('✓ Genius lyrics: '+okc+'/'+total) : ('✗ No se pudo cargar ninguna letra ('+total+') — revisa los links o la conexion'), 6000);
-  }
-  function lanzar(){
-    while(activos<GENIUS_MAX_PARALELO && next<jobs.length){
-      var j=jobs[next++]; activos++;
-      (function(job){
-        activeNames.push(job.ch.name); liveStatus();
-        fetchGeniusLyrics(job.url, function(err,lyr){
-          activos--;
-          var ix=activeNames.indexOf(job.ch.name); if(ix>=0) activeNames.splice(ix,1);
-          if(!err && lyr){
-            job.ch.lyricsText=lyr; job.ch.lines=deriveLines(lyr); job.ch.loaded=job.ch.lines.length>0;
-            if(job.ch.id===activeId){ lines=job.ch.lines.slice(); renderLyricsFlow(); }
-            okc++; done++; liveStatus(); finalizar(); lanzar(); return;
-          }
-          // Los proxies CORS son intermitentes (rate-limit, caidas puntuales). Un solo
-          // reintento por canal recupera la mayoria de fallos sin colgar el proceso.
-          if(!job._retry){ job._retry=1; jobs.push(job); liveStatus(' · reintentando '+job.ch.name+'…', false); lanzar(); return; }
-          done++; liveStatus(' · '+job.ch.name+': '+err, true); finalizar(); lanzar();
-        }, function(p){ liveStatus(); });   // onProg: cada intento refresca el status → nunca congelado
-      })(j);
-    }
-  }
-  liveStatus();
-  lanzar();
+  var pending=0, done=0, okc=0;
+  channels.forEach(function(ch,i){
+    var url=(geniusLinks[i]||'').trim(); if(!url) return;
+    pending++;
+    fetchGeniusLyrics(url, function(err,lyr){
+      done++;
+      if(!err && lyr){ ch.lyricsText=lyr; ch.lines=deriveLines(lyr); ch.loaded=ch.lines.length>0;
+        if(ch.id===activeId){ lines=ch.lines.slice(); renderLyricsFlow(); } okc++; }
+      gStatus(done+'/'+pending+' fetched'+(err?(' · '+ch.name+': '+err):''), err?'#c66':'var(--bl)');
+      if(lbl) lbl.textContent='Loading '+done+'/'+pending;
+      if(done>=pending){ closeGenius(); renderChannels(); syncTitle(); toast('✓ Genius lyrics: '+okc+'/'+pending); }
+    });
+  });
+  if(!pending){ gStatus('No links to load','#c66'); return; }
+  if(lbl) lbl.textContent='Loading…';
 }
 // Discreet progress message for the import (small line — popup status / toast).
 function _geniusProgMsg(p){
   if(!p) return 'Fetching lyrics…';
   if(p.stage==='done')   return '✓ Lyrics loaded';
   if(p.stage==='deep')   return 'Fetching lyrics… (deep search)';
+  if(p.stage==='lrclib') return 'Fetching lyrics… (matching)';
   var n=Math.min((p.done|0)+1, p.total||1);
   return 'Fetching lyrics… ('+n+'/'+(p.total||1)+')';
 }
 // AE can fetch genius.com directly (no web security). On web/touch the browser blocks
 // cross-origin reads, so we go through CORS proxies that return the page.
-// FAST: all proxies race in parallel — first source to yield lyrics wins. Genius es la
-// UNICA fuente, para que la letra llegue siempre con sus cabeceras [Verse]/[Chorus].
-// onProg(p) reports import status.
+// FAST: all proxies race in parallel (8s cap each) AND LRCLIB fires alongside after a
+// short head-start — first source to yield lyrics wins. onProg(p) reports import status.
 function fetchGeniusLyrics(url, cb, onProg){
   if(!/^https?:\/\//i.test(url)){ cb('invalid url', null); return; }
   var enc=encodeURIComponent(url);
-  // Timeout por proxy.
-  var PROXY_TIMEOUT=5000;
   var sources=[
-    // VERIFICADOS funcionando (jul 2026): devuelven la pagina COMPLETA de Genius con
-    // data-lyrics-container y las cabeceras [Verse]/[Chorus]/[Outro]. Van primero para
-    // ganar la carrera. Usan el URL crudo (no encodeURIComponent), asi lo esperan.
-    { u:'https://cors.eu.org/'+url,                     json:false },
-    { u:'https://test.cors.workers.dev/?'+url,          json:false },
-    // Fallbacks: a jul 2026 estaban caidos o con rate-limit (corsproxy/corsfix piden ya
-    // API key, allorigins/codetabs/thingproxy/cors.lol/whateverorigin no respondian), pero
-    // se dejan por si reviven o si los de arriba empiezan a limitar.
+    { u:'https://proxy.corsfix.com/?'+url,              json:false },
+    { u:'https://corsproxy.io/?url='+enc,               json:false },
     { u:'https://api.allorigins.win/raw?url='+enc,      json:false },
     { u:'https://api.codetabs.com/v1/proxy?quest='+enc, json:false },
-    { u:'https://corsproxy.io/?url='+enc,               json:false },
-    { u:'https://api.allorigins.win/get?url='+enc,      json:true  },
-    { u:'https://thingproxy.freeboard.io/fetch/'+url,   json:false }
+    { u:'https://thingproxy.freeboard.io/fetch/'+url,   json:false },
+    { u:'https://api.allorigins.win/get?url='+enc,      json:true  }
   ];
   if(IN_AE) sources.unshift({ u:url, json:false });   // AE: direct, no web security
   var done=false, pending=sources.length, tried=0, total=sources.length;
   function report(stage){ if(onProg){ try{ onProg({stage:stage, done:tried, total:total}); }catch(e){} } }
   report('start');
-  function finishNow(lyr, err){ if(done) return; done=true; if(lyr) report('done'); cb(lyr?null:(err||'no lyrics found'), lyr||null, 'genius'); }
-  // Agotadas las fuentes de pagina → ultimo recurso (solo AE): descargar la pagina real
-  // con el curl del sistema. Genius es la UNICA fuente: es la que trae las cabeceras [..].
+  function finishNow(lyr, err){ if(done) return; done=true; if(lyr) report('done'); cb(lyr?null:(err||'no lyrics found'), lyr||null); }
+  // ALL page sources failed → no-proxy fallbacks: AE downloads the real page with the
+  // system curl; then LRCLIB (open lyrics API with CORS) searched by the URL slug.
   function fallback(){
     report('deep');
     _aeCurlFetch(url, function(html){
       var lyr=html?parseGeniusHTML(html):null;
-      finishNow(lyr||null, lyr?null:'no lyrics found');
+      if(lyr){ finishNow(lyr); return; }
+      _lrclibFetch(url, function(t){ finishNow(t||null, t?null:'no lyrics found'); });
     });
   }
   function finish(err, lyr){
@@ -2445,7 +2442,7 @@ function fetchGeniusLyrics(url, cb, onProg){
   sources.forEach(function(s){
     var settled=false; function settle(err, lyr){ if(settled||done) return; settled=true; finish(err, lyr); }
     var ctrl = window.AbortController ? new AbortController() : null;
-    var to=setTimeout(function(){ if(ctrl){ try{ ctrl.abort(); }catch(e){} } settle('timeout', null); }, PROXY_TIMEOUT);
+    var to=setTimeout(function(){ if(ctrl){ try{ ctrl.abort(); }catch(e){} } settle('timeout', null); }, 5500);
     fetch(s.u, ctrl ? { signal:ctrl.signal } : undefined)
       .then(function(r){ return r.text(); })
       .then(function(txt){
@@ -2456,6 +2453,8 @@ function fetchGeniusLyrics(url, cb, onProg){
       })
       .catch(function(){ clearTimeout(to); settle('network error', null); });
   });
+  // Runs in AE too — there the proxy/curl path is the slowest, so this is the big win.
+  setTimeout(function(){ if(done) return; _lrclibFetch(url, function(t){ if(t){ report('lrclib'); finishNow(t); } }); }, 700);
 }
 // Fallback #1 (AE only): download the Genius page with the SYSTEM curl (Windows 10+
 // ships it) via ExtendScript — real TLS + browser UA, immune to CEP CORS/Cloudflare.
@@ -2478,7 +2477,24 @@ function _aeCurlFetch(url, cb){
     });
   });
 }
-
+// Fallback #2 (web + AE): LRCLIB, an open lyrics API with permissive CORS (no proxy,
+// no key). Searches "artist song" derived from the genius URL slug.
+function _lrclibFetch(url, cb){
+  var m=url.match(/genius\.com\/([^\/?#]+?)(?:-lyrics)?(?:[\/?#]|$)/i);
+  var q=m?m[1].replace(/-+/g,' ').replace(/\s+/g,' ').trim():'';
+  if(!q){ cb(null); return; }
+  var ctrl=window.AbortController?new AbortController():null;
+  var to=setTimeout(function(){ if(ctrl){ try{ ctrl.abort(); }catch(e){} } }, 5000);
+  fetch('https://lrclib.net/api/search?q='+encodeURIComponent(q), ctrl?{signal:ctrl.signal}:undefined)
+    .then(function(r){ return r.json(); })
+    .then(function(list){
+      clearTimeout(to);
+      var best=null;
+      for(var i=0;i<(list||[]).length;i++){ var it=list[i]; if(it&&it.plainLyrics){ best=it; break; } }
+      cb(best?_cleanGeniusText(best.plainLyrics):null);
+    })
+    .catch(function(){ clearTimeout(to); cb(null); });
+}
 // Parse Genius HTML reliably via the DOM (handles nested spans/links + <br>).
 function _geniusNodeText(el){
   var clone=el.cloneNode(true);
@@ -2495,10 +2511,7 @@ function _cleanGeniusText(t){
           .replace(/^\s*\d+\s*Contributor(?:s)?[\s\S]*?Lyrics\s*/,'')
           // Strip trailing "…Embed" counter Genius appends after the last line
           .replace(/\d*Embed\s*$/,'')
-          // Aisla CADA cabecera [..] en su propia linea. Antes el tope de 60 chars dejaba
-          // pegadas las cabeceras largas ("[Verse 1: Artista A, Artista B & Artista C]"),
-          // asi que isSection no las reconocia y se perdian como seccion.
-          .replace(/\[[^\]\n]*\]/g,function(m){return '\n'+m+'\n';})
+          .replace(/\[[^\]\n]{0,60}\]/g,function(m){return '\n'+m+'\n';})
           .replace(/\n{3,}/g,'\n\n').replace(/[ \t]+\n/g,'\n').replace(/^\s+|\s+$/g,'');
 }
 function parseGeniusHTML(html){

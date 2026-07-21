@@ -2001,20 +2001,10 @@ function importLyricsToComp(lyrCompName, srtContent, optionsJSON) {
 // Descarga una URL con el curl del SISTEMA (Windows 10+ lo trae) a un archivo temporal
 // y devuelve 'ok:<ruta>'. Fallback de red del panel cuando fetch/proxies fallan en CEP:
 // curl usa el TLS real de Windows + user-agent de navegador (pasa Cloudflare).
-// Hash estable del URL → cada cancion tiene su PROPIO archivo temporal.
-function _versoUrlHash(s) {
-  var h = 0; for (var i = 0; i < s.length; i++) { h = ((h << 5) - h + s.charCodeAt(i)) | 0; }
-  return (h >>> 0).toString(36);
-}
 function fetchGeniusToTemp(url) {
   try {
     if (!/^https?:\/\//.test(url)) return 'err:bad url';
-    // BUG CORREGIDO ("misma letra con distinto link" en AE): antes el archivo temporal era
-    // fijo ('verso_genius.html'). Si el borrado previo fallaba (archivo bloqueado) Y curl
-    // no escribia, se leia el HTML de la cancion ANTERIOR. Ahora:
-    //   1) el nombre depende del URL → una cancion nunca puede leer el archivo de otra;
-    //   2) si curl falla, se borra el archivo y se devuelve error (jamas se lee stale).
-    var f = new File(Folder.temp.fsName + '/verso_genius_' + _versoUrlHash(url) + '.html');
+    var f = new File(Folder.temp.fsName + '/verso_genius.html');
     try { if (f.exists) f.remove(); } catch (e0) {}
     var ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
     var cmd = 'curl -s -L --max-time 10 -A "' + ua + '" -o "' + f.fsName + '" "' + url + '"';
@@ -2034,8 +2024,7 @@ function fetchGeniusToTemp(url) {
     } else {
       system.callSystem(cmd);
     }
-    // curl fallo o pagina vacia → borrar para que NUNCA se lea contenido viejo.
-    if (!f.exists || f.length < 500) { try { if (f.exists) f.remove(); } catch (eR) {} return 'err:curl produced no output'; }
+    if (!f.exists || f.length < 500) return 'err:curl produced no output';
     return 'ok:' + f.fsName;
   } catch (e) { return 'err:' + e.toString(); }
 }
