@@ -87,19 +87,17 @@ CSInterface.prototype.getExtensionID = function () {
 CSInterface.prototype.getScaleFactor = function () {
   return window.__adobe_cep__ ? window.__adobe_cep__.getScaleFactor() : 1;
 };
-/**
- * Tell CEP which key events this panel wants for itself. Any key listed here is
- * delivered to the panel and NOT forwarded to the host app — this is the only way
- * to stop After Effects from eating Space (project preview) while the panel is
- * focused. `keyEventsInterest` is a JSON array of {keyCode, ctrlKey, altKey,
- * shiftKey, metaKey}. macOS only; on Windows __adobe_cep__ has no such method.
- */
-CSInterface.prototype.registerKeyEventsInterest = function (keyEventsInterest) {
-  if (!window.__adobe_cep__ || !window.__adobe_cep__.registerKeyEventsInterest) return false;
-  return window.__adobe_cep__.registerKeyEventsInterest(keyEventsInterest);
-};
-
 CSInterface.prototype.setWindowTitle = function (title) {
   if (window.__adobe_cep__) window.__adobe_cep__.invokeSyncCommand
     ? window.__adobe_cep__.invokeSyncCommand(0, title) : null;
+};
+
+// Le pide al host (AE) que NO consuma estas combinaciones de teclas y las entregue al panel
+// en su lugar. Es el unico mecanismo que evita que macOS/AE intercepte Space (Play), Cmd+Z
+// (Undo), etc. a nivel nativo ANTES de que lleguen al DOM del panel — preventDefault() del
+// lado JS no alcanza a detenerlas en Mac. Faltaba en esta build recortada de CSInterface: sin
+// este metodo, cualquier llamada a registerKeyEventsInterest era un no-op silencioso.
+CSInterface.prototype.registerKeyEventsInterest = function (keyEventsInterest) {
+  if (!window.__adobe_cep__ || !window.__adobe_cep__.registerKeyEventsInterest) return false;
+  return window.__adobe_cep__.registerKeyEventsInterest(keyEventsInterest);
 };

@@ -13,7 +13,7 @@ function _isWin() { try { return String($.os).indexOf("Windows") !== -1; } catch
 function _dlgFilter(winFilter, exts) { return _isWin() ? winFilter : undefined; }
 // Sentinela de version del host: el panel comprueba que ESTA funcion exista para saber
 // si AE tiene cargada una copia vieja del jsx y forzar su recarga.
-function _hostVersion() { return 'verso-2025-06'; }
+function _hostVersion() { return 'verso-2026-10'; }
 function _AUDIO_FILTER() { return _dlgFilter('Audio:*.mp3,*.wav,*.aac,*.aif,*.aiff,*.ogg,*.m4a,*.flac,*.wma,*.caf', ["mp3","wav","aac","aif","aiff","ogg","m4a","flac","wma","caf"]); }
 function _SRT_FILTER()   { return _dlgFilter('SRT:*.srt,All files:*', ["srt","txt"]); }
 function saveSRTFile(srtContent, suggestedName) {
@@ -361,11 +361,6 @@ function importViaStyleController(srtContent, optionsJSON) {
       styleLayer = _createDefaultStyleLayer(comp, styleName);
       createdStyle = true;
     }
-    // Reemplazar: quitar las capas SRT generadas antes (incl. "SRT Frame"), desbloqueandolas
-    // por si quedaron locked, para que al reimportar NO se dupliquen. No toca la plantilla.
-    for (var _rl = comp.numLayers; _rl >= 1; _rl--) {
-      try { var _rL = comp.layer(_rl); if (_rL !== styleLayer && /^SRT/i.test(_rL.name)) { try { _rL.locked = false; } catch (eL) {} _rL.remove(); } } catch (eR) {}
-    }
 
     var useStyleAnim  = !createdStyle && _hasTextAnimatorKeyframes(styleLayer);
     var styleOrigIn   = 0; try { styleOrigIn  = styleLayer.inPoint;  } catch(er) {}
@@ -471,7 +466,7 @@ function importViaStyleController(srtContent, optionsJSON) {
       try { styleLayer.moveToEnd(); } catch (er) {}
     }
 
-    try { comp.openInViewer(); } catch (er) {}
+    /* openInViewer omitido: no sacar el foco del panel al importar */
 
     app.endUndoGroup();
     var msg = count + ' capas en "' + comp.name + '"';
@@ -1105,7 +1100,7 @@ function cleanLyricComp(comp) {
         var L = comp.layer(l2);
         if (!(L instanceof TextLayer)) continue;
         var nn = L.name.toLowerCase();
-        if (nn.indexOf('style') !== -1 || nn.indexOf('srt') !== -1 || nn.indexOf('frame') !== -1) continue;  // NUNCA tocar Style Frame/Layer, SRT Frame ni ningun "* Frame"
+        if (nn.indexOf('style') !== -1 || nn.indexOf('srt') !== -1) continue;  // no tocar Style Frame/Layer ni SRT
         targetLayer = L; break;
       } catch (e) {}
     }
@@ -1326,17 +1321,32 @@ function doRenderOrQueue(sendToAME, isShort) {
     var selected = getAllSelectedCompsByPanelOrder();
     var thComps = [], mainComps = [];
     if (selected.length > 0) {
-      for (var i = 0; i < selected.length; i++) { if (isTHComp(selected[i])) thComps.push(selected[i]); else mainComps.push(selected[i]); }
-    } else {
-      // Sin selección: por color de etiqueta y modo.
-      //   Video  → main naranja(11) + TH rojas de video.
-      //   Short  → main amarillo(2) + "Short TH" rojas.
-      var mainLabel = isShort ? 2 : 11;
+      // Respeta la seccion: en VIDEO nada Short; en SHORT los "… Short TH" no van.
+      for (var i = 0; i < selected.length; i++) {
+        var cs = selected[i];
+        if (!isShort) { if (_isShortName(cs.name)) continue; }
+        else { if (isTHComp(cs) && _isShortName(cs.name)) continue; }
+        if (isTHComp(cs)) thComps.push(cs); else mainComps.push(cs);
+      }
+    } else if (!isShort) {
+      // VIDEO: main = comp naranja (label 11) de video + TH de video. Nunca comps de Short
+      // ni de Lyrics (aunque tengan la etiqueta correcta por error).
       for (var i2 = 1; i2 <= app.project.numItems; i2++) {
         var item = app.project.item(i2);
         if (!(item instanceof CompItem)) continue;
-        if (isTHComp(item)) { if (_modeMatch(item.name, isShort)) thComps.push(item); }
-        else if (item.label === mainLabel && _modeMatch(item.name, isShort)) mainComps.push(item);
+        if (item.name.toLowerCase().indexOf('lyrics') !== -1) continue;
+        if (isTHComp(item)) { if (!_isShortName(item.name)) thComps.push(item); }
+        else if (item.label === 11 && !_isShortName(item.name)) mainComps.push(item);
+      }
+    } else {
+      // SHORT: main de VIDEO (naranja 11) + main SHORT (amarillo 2) + TH de VIDEO. Las
+      // "… Short TH" NO van — se reusa la TH de video (mismo criterio que Verso LMG).
+      for (var i3 = 1; i3 <= app.project.numItems; i3++) {
+        var it3 = app.project.item(i3);
+        if (!(it3 instanceof CompItem)) continue;
+        if (it3.name.toLowerCase().indexOf('lyrics') !== -1) continue;
+        if (isTHComp(it3)) { if (!_isShortName(it3.name)) thComps.push(it3); }
+        else if ((it3.label === 11 && !_isShortName(it3.name)) || (it3.label === 2 && _isShortName(it3.name))) mainComps.push(it3);
       }
     }
     if (thComps.length === 0 && mainComps.length === 0)
@@ -1652,11 +1662,9 @@ function _buildStyleFrame(comp, entries, frameLayer, doCenter) {
 // Core compartido: construye las capas de letra (duplicando "Style Controler") en una comp.
 function _buildLyricLayers(comp, entries, fadeIn, fadeOut, styleName, doCenter, doExtend) {
   try { _SNAP_FD = comp.frameDuration; } catch (e) {}   // snap keyframes a frames del comp
-  // Reemplazar: quitar las capas SRT generadas antes (incl. "SRT Frame"), desbloqueandolas
-  // por si quedaron locked, para que al reimportar NO se dupliquen ni se sobrepongan. NUNCA
-  // toca la plantilla "Style Frame"/"Style Controler" (esas no empiezan por "SRT").
+  // Quitar capas SRT generadas antes (incl. "SRT Frame") para que NO se sobrepongan al reimportar.
   for (var rl = comp.numLayers; rl >= 1; rl--) {
-    try { var _rlL = comp.layer(rl); if (/^SRT\b/i.test(_rlL.name)) { try { _rlL.locked = false; } catch (eL) {} _rlL.remove(); } } catch (e) {}
+    try { if (/^SRT\b/i.test(comp.layer(rl).name)) comp.layer(rl).remove(); } catch (e) {}
   }
   var lastEnd = 0;
   for (var q = 0; q < entries.length; q++) if (entries[q].endSec > lastEnd) lastEnd = entries[q].endSec;
@@ -1977,7 +1985,17 @@ function importLyricsToComp(lyrCompName, srtContent, optionsJSON) {
     var styleName = opt.styleLayerName || 'Style Controler';
 
     var comp = _findCompByNameCI(lyrCompName);
-    if (!comp) comp = _lyricsCompByNum(_leadNum(lyrCompName));
+    if (!comp) {
+      // Fallback CONSCIENTE del modo: para "… Short Lyrics" busca la Lyrics Short del canal,
+      // no la de video (_lyricsCompByNum devolvia la primera = la de video). Mismo fix que ya
+      // tenia bulkImportOne — faltaba aqui, por eso el import INDIVIDUAL fallaba/pegaba en la
+      // comp equivocada cuando el nombre exacto no coincidia, mientras que el bulk si funcionaba.
+      var wantShort = _isShortName(lyrCompName), nn = _leadNum(lyrCompName), qi;
+      for (qi = 1; qi <= app.project.numItems && !comp; qi++) {
+        var qt = app.project.item(qi);
+        if (_isLyricsComp(qt) && _leadNum(qt.name) === nn && (_isShortName(qt.name) === wantShort)) comp = qt;
+      }
+    }
     if (!comp) {
       app.endUndoGroup();
       return 'err:Comp "' + lyrCompName + '" not found in the project.';
@@ -1987,7 +2005,7 @@ function importLyricsToComp(lyrCompName, srtContent, optionsJSON) {
     if (!entries.length) { app.endUndoGroup(); return 'err:No valid subtitles in the SRT.'; }
 
     var res = _buildLyricLayers(comp, entries, fadeIn, fadeOut, styleName, true, true);
-    try { comp.openInViewer(); } catch (er) {}
+    /* openInViewer omitido: no sacar el foco del panel al importar */
     app.endUndoGroup();
     var msg = res.count + ' capas en "' + comp.name + '"';
     if (res.createdStyle) msg += ' (Style Controler creado)';
@@ -1997,31 +2015,45 @@ function importLyricsToComp(lyrCompName, srtContent, optionsJSON) {
     return 'err:' + e.message + (e.line ? ' (line ' + e.line + ')' : '');
   }
 }
-
-// Descarga una URL con el curl del SISTEMA (Windows 10+ lo trae) a un archivo temporal
-// y devuelve 'ok:<ruta>'. Fallback de red del panel cuando fetch/proxies fallan en CEP:
-// curl usa el TLS real de Windows + user-agent de navegador (pasa Cloudflare).
-// Hash estable del URL → cada cancion tiene su PROPIO archivo temporal.
-function _versoUrlHash(s) {
-  var h = 0; for (var i = 0; i < s.length; i++) { h = ((h << 5) - h + s.charCodeAt(i)) | 0; }
-  return (h >>> 0).toString(36);
+// Importa la MISMA letra a VARIAS comps (modo SHORTS: la de video y la Short del canal).
+// namesJSON = ["01 NN Lyrics","01 NN Short Lyrics"]. Cada comp respeta su propio Style Frame.
+function importLyricsToMany(namesJSON, srtContent, optionsJSON) {
+  var names; try { names = JSON.parse(namesJSON || '[]'); } catch (e) { names = []; }
+  if (!names.length) return 'err:sin comps destino';
+  var okc = 0, parts = [];
+  for (var i = 0; i < names.length; i++) {
+    if (!names[i]) continue;
+    var r = importLyricsToComp(names[i], srtContent, optionsJSON);
+    if (String(r).indexOf('ok:') === 0) { okc++; parts.push(String(r).slice(3)); }
+    else parts.push('ERR ' + names[i] + ': ' + String(r).replace(/^err:/, ''));
+  }
+  return okc ? ('ok:' + parts.join('  ·  ')) : ('err:' + parts.join('  ·  '));
 }
-function fetchGeniusToTemp(url) {
+
+// Descarga una URL con el curl del SISTEMA (Windows 10+ y macOS lo traen) a un archivo
+// temporal PROPIO de esta peticion y devuelve 'ok:<ruta>' (+ '\n<url final>' en Mac).
+// Fallback de red del panel cuando fetch/proxies fallan en CEP: curl usa el TLS real del
+// sistema + user-agent de navegador (pasa Cloudflare).
+// CADA llamada escribe a SU archivo (tag unico que manda el panel). Antes todas usaban
+// 'verso_genius.html': con varios canales en cola, en Mac los callbacks de evalScript
+// llegaban cuando la cola ya habia terminado y TODOS los canales leian el ultimo archivo
+// descargado (= la misma letra en todos los canales).
+function fetchGeniusToFile(url, tag) {
   try {
-    if (!/^https?:\/\//.test(url)) return 'err:bad url';
-    // BUG CORREGIDO ("misma letra con distinto link" en AE): antes el archivo temporal era
-    // fijo ('verso_genius.html'). Si el borrado previo fallaba (archivo bloqueado) Y curl
-    // no escribia, se leia el HTML de la cancion ANTERIOR. Ahora:
-    //   1) el nombre depende del URL → una cancion nunca puede leer el archivo de otra;
-    //   2) si curl falla, se borra el archivo y se devuelve error (jamas se lee stale).
-    var f = new File(Folder.temp.fsName + '/verso_genius_' + _versoUrlHash(url) + '.html');
+    url = String(url || '');
+    if (!/^https?:\/\/[^\s"`$\\]+$/.test(url)) return 'err:bad url';
+    tag = String(tag || '').replace(/[^A-Za-z0-9_\-]/g, '');
+    if (!tag) tag = (new Date()).getTime() + '_' + Math.floor(Math.random() * 1000000);
+    _cleanGeniusTemp();
+    var f = new File(Folder.temp.fsName + '/verso_genius_' + tag + '.html');
     try { if (f.exists) f.remove(); } catch (e0) {}
-    var ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
-    var cmd = 'curl -s -L --max-time 10 -A "' + ua + '" -o "' + f.fsName + '" "' + url + '"';
-    if ($.os.indexOf('Windows') !== -1) {
+    var eff = '';
+    if (_isWin()) {
+      var ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+      var cmd = 'curl -s -L --max-time 10 -A "' + ua + '" -o "' + f.fsName + '" "' + url + '"';
       // Ejecutar curl OCULTO: 'cmd.exe /c' abre una ventana de consola por cada llamada
       // (molesto en bulk). WScript.Shell.Run(cmd, 0, True) = ventana oculta + espera.
-      var vbs = new File(Folder.temp.fsName + '/verso_fetch.vbs');
+      var vbs = new File(Folder.temp.fsName + '/verso_fetch_' + tag + '.vbs');
       vbs.encoding = 'UTF-8';
       if (vbs.open('w')) {
         vbs.write('CreateObject("WScript.Shell").Run "cmd /c ' + cmd.replace(/"/g, '""') + '", 0, True');
@@ -2032,12 +2064,37 @@ function fetchGeniusToTemp(url) {
         system.callSystem('cmd.exe /c ' + cmd);   // si no se puede escribir el shim, modo normal
       }
     } else {
-      system.callSystem(cmd);
+      // macOS: /usr/bin/curl siempre existe (no depende del PATH de AE); --compressed baja
+      // ~5x menos datos. Con -s y -o, stdout = solo la URL final (-w): el panel la usa para
+      // aceptar redirecciones de Genius (link viejo → slug actual).
+      var bin = (new File('/usr/bin/curl')).exists ? '/usr/bin/curl' : 'curl';
+      var uaM = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+      eff = String(system.callSystem(bin + ' -s -L --compressed --max-time 12 -A "' + uaM + '"' +
+        ' -H "Accept: text/html,application/xhtml+xml" -H "Accept-Language: en-US,en;q=0.9"' +
+        ' -o "' + f.fsName + '" -w "%{url_effective}" "' + url + '"') || '').replace(/^\s+|\s+$/g, '');
+      if (!/^https?:\/\//.test(eff)) eff = '';
     }
-    // curl fallo o pagina vacia → borrar para que NUNCA se lea contenido viejo.
-    if (!f.exists || f.length < 500) { try { if (f.exists) f.remove(); } catch (eR) {} return 'err:curl produced no output'; }
-    return 'ok:' + f.fsName;
+    if (!f.exists || f.length < 500) {
+      try { if (f.exists) f.remove(); } catch (e1) {}
+      return 'err:curl produced no output';
+    }
+    return 'ok:' + f.fsName + (eff ? '\n' + eff : '');
   } catch (e) { return 'err:' + e.toString(); }
+}
+// Compatibilidad con paneles anteriores: misma descarga (archivo unico), devuelve solo la ruta.
+function fetchGeniusToTemp(url) {
+  var r = fetchGeniusToFile(url, '');
+  var nl = r.indexOf('\n');
+  return nl >= 0 ? r.substring(0, nl) : r;
+}
+// Borra descargas de Genius de mas de 10 min que el panel no alcanzo a borrar.
+function _cleanGeniusTemp() {
+  try {
+    var old = Folder.temp.getFiles('verso_genius_*.html'), now = (new Date()).getTime();
+    for (var i = 0; i < old.length; i++) {
+      try { if (old[i] instanceof File && now - old[i].modified.getTime() > 600000) old[i].remove(); } catch (e) {}
+    }
+  } catch (e2) {}
 }
 
 // Bulk (1 canal por llamada): importa la letra a su comp Lyrics SOLO si hace falta.
@@ -2053,7 +2110,15 @@ function bulkImportOne(lyrCompName, srtContent, optionsJSON) {
     var styleName = opt.styleLayerName || 'Style Controler';
 
     var comp = _findCompByNameCI(lyrCompName);
-    if (!comp) comp = _lyricsCompByNum(_leadNum(lyrCompName));
+    if (!comp) {
+      // Fallback CONSCIENTE del modo: para "… Short Lyrics" busca la Lyrics Short del canal,
+      // no la de video (_lyricsCompByNum devolvia la primera = la de video).
+      var wantShort = _isShortName(lyrCompName), nn = _leadNum(lyrCompName), qi;
+      for (qi = 1; qi <= app.project.numItems && !comp; qi++) {
+        var qt = app.project.item(qi);
+        if (_isLyricsComp(qt) && _leadNum(qt.name) === nn && (_isShortName(qt.name) === wantShort)) comp = qt;
+      }
+    }
     if (!comp) return 'err:Comp "' + lyrCompName + '" not found';
 
     // Reimporta SIEMPRE, igual que el import individual: _buildLyricLayers ya borra las
@@ -2118,28 +2183,29 @@ function _readFile(f) {
 // (el panel recibia cadena vacia -> "sin respuesta de AE"). Por eso el resultado se
 // vuelca ademas a un archivo temporal que el panel lee con cep.fs, igual que ya se hace
 // con fetchGeniusToTemp. _resultPath() devuelve la ruta para que el panel sepa donde leer.
-var _RESULT_DIR = null;                       // carpeta donde el panel leera el volcado (dentro de la extension)
-function _setResultDir(d) { try { d = d ? String(d) : ''; var SEP = String.fromCharCode(92); while (d.length && (d.charAt(d.length-1)==='/' || d.charAt(d.length-1)===SEP)) d = d.slice(0, -1); _RESULT_DIR = d ? d : null; } catch (e) { _RESULT_DIR = null; } return 'ok'; }
-function _resultTempPath() { return Folder.temp.fsName + '/verso_result.json'; }
-// Ruta PRIMARIA del volcado: dentro de la extension. El panel la lee con XHR RELATIVO
-// (mismo origen que index.html => siempre permitido y sin pasar por el motor bloqueado).
-// Si el panel no fijo carpeta, cae al temporal del sistema.
-function _resultPath() { return _RESULT_DIR ? (_RESULT_DIR + '/verso_result.json') : _resultTempPath(); }
-function _writeFileUTF8(path, s) { try { var f = new File(path); f.encoding = 'UTF-8'; if (f.open('w')) { f.write(s); f.close(); return true; } } catch (e) {} return false; }
-function _removeFileSilently(path) { try { var f = new File(path); if (f.exists) f.remove(); } catch (e) {} }
-// Borra el volcado (primario y temporal) para que el panel no lea un resultado viejo.
-function _clearResult() { _removeFileSilently(_resultPath()); _removeFileSilently(_resultTempPath()); return 'ok'; }
+function _resultPath() { return Folder.temp.fsName + '/verso_result.json'; }
+// Lectura del volcado temporal en una segunda llamada CORTA: al no abrir ningun dialogo,
+// evalScript SI devuelve el valor. Asi el panel recupera el resultado que se perdio.
+// Borra el volcado anterior. El panel lo llama ANTES de cada accion para no leer un
+// resultado viejo y para poder detectar cuando aparece el nuevo.
+function _clearResult() {
+  try { var f = new File(_resultPath()); if (f.exists) f.remove(); } catch (e) {}
+  return 'ok';
+}
 function _readResultText() {
   try {
     var f = new File(_resultPath());
-    if (!f.exists) { f = new File(_resultTempPath()); if (!f.exists) return ''; }
+    if (!f.exists) return '';
     f.encoding = 'UTF-8';
     if (!f.open('r')) return '';
     var c = f.read(); f.close();
     return c || '';
   } catch (e) { return ''; }
 }
-// EMPUJA el resultado al panel con CSXSEvent (respaldo del sondeo por archivo).
+// Igual que _writeResult pero para las funciones que devuelven texto plano ("ok:"/"err:").
+// EMPUJA el resultado al panel con CSXSEvent. Es el mecanismo estandar de CEP para
+// ExtendScript -> panel y NO depende del valor de retorno de evalScript, que se pierde
+// cuando la funcion abrio un dialogo modal (causa de que las leyendas no aparecieran).
 var _xLib = null;
 function _notify(s) {
   try {
@@ -2150,22 +2216,25 @@ function _notify(s) {
     ev.dispatch();
   } catch (err) {}
 }
-// Escribe el volcado en la carpeta de la extension (para el XHR relativo) Y en el temporal
-// (respaldo para _readResultText), y ademas lo empuja por evento.
-function _writeRaw(s) { s = String(s); _writeFileUTF8(_resultPath(), s); _writeFileUTF8(_resultTempPath(), s); _notify(s); return s; }
-function _writeResult(obj) { return _writeRaw(JSON.stringify(obj)); }
-// Diagnostico (solo se llama si la leyenda no llego a tiempo): informa si la carpeta de
-// volcado es escribible y si los archivos existen, para saber por que no se entrego.
-function _diagResult() {
-  var o = { dir: (_RESULT_DIR || '(temp)') };
-  try { o.primaryExists = (new File(_resultPath())).exists ? 1 : 0; } catch (e) { o.primaryExists = -1; }
-  try { o.tempExists = (new File(_resultTempPath())).exists ? 1 : 0; } catch (e) { o.tempExists = -1; }
+function _writeRaw(s) {
+  s = String(s);
   try {
-    var probe = new File((_RESULT_DIR || Folder.temp.fsName) + '/verso_probe.txt');
-    if (probe.open('w')) { probe.write('ok'); probe.close(); o.dirWritable = 1; try { probe.remove(); } catch (e2) {} }
-    else o.dirWritable = 0;
-  } catch (e) { o.dirWritable = 0; }
-  return JSON.stringify(o);
+    var f = new File(_resultPath());
+    f.encoding = 'UTF-8';
+    if (f.open('w')) { f.write(s); f.close(); }
+  } catch (e) {}
+  _notify(s);
+  return s;
+}
+function _writeResult(obj) {
+  var s = JSON.stringify(obj);
+  try {
+    var f = new File(_resultPath());
+    f.encoding = 'UTF-8';
+    if (f.open('w')) { f.write(s); f.close(); }
+  } catch (e) {}
+  _notify(s);
+  return s;
 }
 function importSRTBatch(isShort) {
   try {
@@ -2194,7 +2263,7 @@ function importSRTBatch(isShort) {
     }
 
     app.beginUndoGroup('Lyricator: Import SRT batch');
-    var count = Math.min(targets.length, files.length), applied = 0, totalLayers = 0, firstComp = null, names = [], fileNames = [];
+    var count = Math.min(targets.length, files.length), applied = 0, totalLayers = 0, firstComp = null;
     for (var j = 0; j < count; j++) {
       var content = _readFile(files[j]);
       if (content === null) continue;
@@ -2202,14 +2271,11 @@ function importSRTBatch(isShort) {
       if (!entries.length) continue;
       var res = _buildLyricLayers(targets[j], entries, 0.3, 0.3, 'Style Controler', true, true);
       totalLayers += res.count; applied++;
-      names.push(targets[j].name);
-      var _fn = String(files[j].name); var _dot = _fn.lastIndexOf('.'); if (_dot > 0) _fn = _fn.substring(0, _dot); fileNames.push(_fn);
       if (!firstComp) firstComp = targets[j];
     }
     app.endUndoGroup();
-    // Abrir la comp donde se importo, para quedar parado ahi.
-    try { if (firstComp) { firstComp.openInViewer(); app.project.activeItem; } } catch (eV) {}
-    return _writeResult({ ok: true, applied: applied, total: count, layers: totalLayers, names: names, files: fileNames });
+    /* openInViewer omitido: quedarse en el panel tras importar SRT */
+    return _writeResult({ ok: true, applied: applied, total: count, layers: totalLayers });
   } catch (e) {
     try { app.endUndoGroup(); } catch (x) {}
     return _writeResult({ ok: false, msg: e.toString() });
@@ -2244,7 +2310,16 @@ function clearAllLyricLayers(isShort) {
 function updateThumbnailComp(thCompName, artist, song) {
   try {
     var comp = _findCompByNameCI(thCompName);
-    if (!comp) comp = _thCompByNum(_leadNum(thCompName));
+    if (!comp) {
+      // Fallback CONSCIENTE del modo: para "… Short TH" busca la TH Short del canal, no la
+      // de video. (_thCompByNum devolvia la primera TH del numero = la de video, por eso la
+      // Short TH nunca se actualizaba.)
+      var wantShort = _isShortName(thCompName), nn = _leadNum(thCompName), qi;
+      for (qi = 1; qi <= app.project.numItems && !comp; qi++) {
+        var qt = app.project.item(qi);
+        if (qt instanceof CompItem && isTHComp(qt) && _leadNum(qt.name) === nn && (_isShortName(qt.name) === wantShort)) comp = qt;
+      }
+    }
     if (!comp) return _writeRaw('err:TH comp "' + thCompName + '" not found.');
     app.beginUndoGroup('Lyricator: Update thumbnail');
     var setA = _setTextLayer(comp, 'Artist', artist);
@@ -2258,6 +2333,17 @@ function updateThumbnailComp(thCompName, artist, song) {
   }
 }
 
+// Modo SHORTS: actualiza la TH de video Y la "… Short TH" con el mismo titulo. shortName
+// vacio = solo la de video. Devuelve el valor directo (no via _writeRaw: no es op de dialogo).
+function updateThumbnailBoth(thName, shortName, artist, song) {
+  var r1 = updateThumbnailComp(thName, artist, song);
+  var okc = (String(r1).indexOf('ok:') === 0) ? 1 : 0, names = okc ? String(r1).slice(3) : '';
+  if (shortName && shortName !== '') {
+    var r2 = updateThumbnailComp(shortName, artist, song);
+    if (String(r2).indexOf('ok:') === 0) { okc++; names += (names ? ' + ' : '') + String(r2).slice(3); }
+  }
+  return okc ? ('ok:' + names) : String(r1);
+}
 // Update ALL thumbnails at once. dataJSON = [{th, artist, song}, ...].
 function updateAllThumbnails(dataJSON) {
   try {
